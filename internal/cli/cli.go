@@ -616,6 +616,8 @@ func ScanCmd(args []string) error {
 	workers := fs.Int("workers", cfg.DiscoveryWorkers, "Number of concurrent workers for scanning")
 	timeout := fs.Duration("timeout", cfg.DiscoveryTimeout, "Timeout for each host probe")
 	debug := fs.Bool("debug", cfg.Debug, "Enable debug output")
+	xmlFormat := fs.Bool("xml", false, "Output merged scan results in XML format")
+	outputFile := fs.String("output", "", "Write XML output to a file")
 	_ = fs.Parse(args)
 
 	if fs.NArg() < 1 {
@@ -633,26 +635,36 @@ func ScanCmd(args []string) error {
 	log := logger.New(*debug)
 	defer func() { _ = log.Sync() }()
 
-	outf("Scanning %s for Hikvision devices...\n", cidr)
+	if !*xmlFormat {
+		outf("Scanning %s for Hikvision devices...\n", cidr)
+	}
 
 	// ARP Discovery
-	out("\n[1/2] ARP Discovery...")
+	if !*xmlFormat {
+		out("\n[1/2] ARP Discovery...")
+	}
 	ips, err := network.ExpandCIDR(cidr)
 	if err != nil {
 		return fmt.Errorf("invalid CIDR: %w", err)
 	}
 
 	arpDevices := discoverDevices(ips, *workers, *timeout, log)
-	outf("      Found %d device(s) via ARP\n", len(arpDevices))
+	if !*xmlFormat {
+		outf("      Found %d device(s) via ARP\n", len(arpDevices))
+	}
 
 	// SADP Discovery
-	out("\n[2/2] SADP Discovery...")
+	if !*xmlFormat {
+		out("\n[2/2] SADP Discovery...")
+	}
 	scanner := newSADPScanner(cfg.SADPTimeout, log)
 	sadpDevices, err := scanner.Discover()
 	if err != nil {
 		log.Warnw("SADP discovery failed", "error", err)
 	}
-	outf("      Found %d device(s) via SADP\n", len(sadpDevices))
+	if !*xmlFormat {
+		outf("      Found %d device(s) via SADP\n", len(sadpDevices))
+	}
 
 	// Merge results (deduplicate by MAC)
 	deviceMap := make(map[string]interface{})
@@ -661,6 +673,41 @@ func ScanCmd(args []string) error {
 	}
 	for _, dev := range sadpDevices {
 		deviceMap[strings.ToUpper(dev.MAC)] = dev
+	}
+
+	if *xmlFormat {
+		// ARP 只有 IP/MAC 信息，补成最小 SADP 设备结构后再与 SADP 结果合并，
+		// 这样即使设备不响应 SADP，也能在 XML 中保留 ARP 发现结果。
+		merged := make([]*sadp.Device, 0, len(deviceMap))
+		indexByMAC := make(map[string]int, len(deviceMap))
+		for _, dev := range arpDevices {
+			mac := strings.ToUpper(dev.MAC)
+			indexByMAC[mac] = len(merged)
+			merged = append(merged, &sadp.Device{MAC: mac, IPv4Address: dev.IP})
+		}
+		for _, dev := range sadpDevices {
+			mac := strings.ToUpper(dev.MAC)
+			if index, ok := indexByMAC[mac]; ok {
+				merged[index] = dev
+				continue
+			}
+			indexByMAC[mac] = len(merged)
+			merged = append(merged, dev)
+		}
+
+		xmlOutput, err := scanner.ToXML(merged)
+		if err != nil {
+			return fmt.Errorf("error generating XML: %w", err)
+		}
+		if *outputFile != "" {
+			if err := os.WriteFile(*outputFile, []byte(xmlOutput), 0600); err != nil {
+				return fmt.Errorf("error writing XML output: %w", err)
+			}
+			outf("Output written to: %s\n", *outputFile)
+		} else {
+			out(xmlOutput)
+		}
+		return nil
 	}
 
 	out("\n===================================================")

@@ -138,6 +138,11 @@ func TestIsHikvisionMAC(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "Hikvision OUI 04:ee:cd",
+			mac:      "04:ee:cd:71:3e:d3",
+			expected: true,
+		},
+		{
 			name:     "Hikvision OUI 28:57:be",
 			mac:      "28:57:be:11:22:33",
 			expected: true,
@@ -318,6 +323,7 @@ func TestHikvisionOUIs(t *testing.T) {
 		oui  string
 	}{
 		{name: "OUI 00:0d:c5", oui: "00:0d:c5"},
+		{name: "OUI 04:ee:cd", oui: "04:ee:cd"},
 		{name: "OUI 28:57:be", oui: "28:57:be"},
 		{name: "OUI 44:19:b6", oui: "44:19:b6"},
 		{name: "OUI 54:c4:15", oui: "54:c4:15"},

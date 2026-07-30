@@ -236,7 +236,10 @@ func TestDiscover_WriteFailStillReadsResponse(t *testing.T) {
 	s.addrsOf = func(_ net.Interface) ([]net.Addr, error) {
 		return []net.Addr{fakeIPNet()}, nil
 	}
-	s.listenUDP = func(string, *net.UDPAddr) (packetConn, error) {
+	s.listenUDP = func(_ string, addr *net.UDPAddr) (packetConn, error) {
+		if addr.Port != Port {
+			t.Errorf("listen port = %d, want %d", addr.Port, Port)
+		}
 		return fake, nil
 	}
 
@@ -249,6 +252,26 @@ func TestDiscover_WriteFailStillReadsResponse(t *testing.T) {
 	}
 	if devices[0].MAC != "AA:BB:CC:DD:EE:FF" {
 		t.Errorf("MAC = %q, want AA:BB:CC:DD:EE:FF", devices[0].MAC)
+	}
+}
+
+func TestDiscover_BindsSADPPort(t *testing.T) {
+	s := newTestScanner(t, 10*time.Millisecond)
+	s.interfaces = func() ([]net.Interface, error) {
+		return []net.Interface{fakeInterface("eth0", net.FlagUp)}, nil
+	}
+	s.addrsOf = func(_ net.Interface) ([]net.Addr, error) {
+		return []net.Addr{fakeIPNet()}, nil
+	}
+	s.listenUDP = func(_ string, addr *net.UDPAddr) (packetConn, error) {
+		if addr.Port != Port {
+			t.Errorf("listen port = %d, want %d", addr.Port, Port)
+		}
+		return &fakePacketConn{readErr: fakeTimeoutErr{}}, nil
+	}
+
+	if _, err := s.Discover(); err != nil {
+		t.Fatalf("Discover() err = %v", err)
 	}
 }
 
@@ -375,7 +398,10 @@ func TestSendCommandBroadcast_Success(t *testing.T) {
 	s.addrsOf = func(_ net.Interface) ([]net.Addr, error) {
 		return []net.Addr{fakeIPNet()}, nil
 	}
-	s.listenUDP = func(string, *net.UDPAddr) (packetConn, error) {
+	s.listenUDP = func(_ string, addr *net.UDPAddr) (packetConn, error) {
+		if addr.Port != Port {
+			t.Errorf("listen port = %d, want %d", addr.Port, Port)
+		}
 		return fake, nil
 	}
 

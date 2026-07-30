@@ -24,6 +24,7 @@ var (
 // HikvisionOUIs are the MAC address prefixes assigned to Hikvision
 var HikvisionOUIs = []string{
 	"00:0d:c5",
+	"04:ee:cd",
 	"28:57:be",
 	"44:19:b6",
 	"54:c4:15",

@@ -172,7 +172,9 @@ func (s *Scanner) Discover() ([]*Device, error) {
 func (s *Scanner) discoverOnInterface(localIP net.IP, ifaceName string) {
 	s.log.Debugw("Scanning on interface", "interface", ifaceName, "ip", localIP.String())
 
-	localAddr := &net.UDPAddr{IP: localIP, Port: 0}
+	// 海康设备通常把 SADP 响应发回固定的 37020 端口，而不是探测报文的
+	// 临时源端口。官方 SADP 工具也采用该固定端口，因此这里不能使用 0。
+	localAddr := &net.UDPAddr{IP: localIP, Port: Port}
 	conn, err := s.listenUDP("udp4", localAddr)
 	if err != nil {
 		s.log.Debugw("Failed to bind", "ip", localIP.String(), "error", err)

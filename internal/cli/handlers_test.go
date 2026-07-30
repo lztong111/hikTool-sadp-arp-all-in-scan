@@ -541,6 +541,22 @@ func TestScanCmd_Success(t *testing.T) {
 	}
 }
 
+func TestScanCmd_XMLIncludesARPAndSADPDevices(t *testing.T) {
+	buf := withStdout(t)
+	withScanner(t, &fakeScanner{
+		xmlOutput: "<SADPDeviceList><Device><MAC>04:EE:CD:71:3E:D3</MAC></Device></SADPDeviceList>",
+	})
+	withARP(t, map[string]string{"192.168.1.117": "04:EE:CD:71:3E:D3"}, nil)
+	withHostAlive(t, func(ip string, _ time.Duration) bool { return ip == "192.168.1.117" })
+
+	if err := ScanCmd([]string{"--xml", "192.168.1.0/24"}); err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(buf.String(), "SADPDeviceList") {
+		t.Errorf("XML output missing root element: %s", buf.String())
+	}
+}
+
 func TestScanCmd_SADPFailureIsLogged(t *testing.T) {
 	withStdout(t)
 	withScanner(t, &fakeScanner{discoverErr: errors.New("sadp broke")})

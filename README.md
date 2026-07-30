@@ -1,309 +1,184 @@
-# SADP - Hikvision Device Discovery Tool
+# 海康设备发现与管理工具
 
-[![Build][1]][2]
-[![GoDoc][3]][4]
-[![Go Report Card][5]][6]
-[![FOSSA Status][9]][10]
+这是一个跨平台的 Go 命令行工具，用于通过海康 SADP 协议和 ARP 扫描发现局域网设备，并执行基础设备查询与 SADP 管理操作。
 
-[1]: https://github.com/cameronnewman/hikvision-tooling/actions/workflows/ci.yml/badge.svg
-[2]: https://github.com/cameronnewman/hikvision-tooling/actions/workflows/ci.yml
-[3]: https://pkg.go.dev/badge/github.com/cameronnewman/hikvision-tooling.svg
-[4]: https://pkg.go.dev/github.com/cameronnewman/hikvision-tooling
-[5]: https://goreportcard.com/badge/github.com/cameronnewman/hikvision-tooling
-[6]: https://goreportcard.com/report/github.com/cameronnewman/hikvision-tooling
-[9]: https://app.fossa.io/api/projects/git%2Bgithub.com%2Fcameronnewman%2Fhikvision-tooling.svg?type=shield
-[10]: https://app.fossa.io/projects/git%2Bgithub.com%2Fcameronnewman%2Fhikvision-tooling?ref=badge_shield
+## 功能
 
-A cross-platform command-line tool for discovering and managing Hikvision
-devices on your network using the SADP (Search Active Devices Protocol)
-and ARP-based discovery methods.
+- SADP 多播发现：获取设备 IP、MAC、序列号、设备类型、固件版本等信息。
+- ARP 网段扫描：发现不响应 SADP 的海康设备，至少返回 IP 和 MAC。
+- 联合扫描：合并 ARP 与 SADP 结果并按 MAC 去重。
+- XML、CSV 输出：便于导入其他系统处理。
+- ISAPI 设备信息查询：支持 HTTP Digest 认证。
+- SADP 命令：查询、激活、修改网络参数、重启等。
+- 旧版固件密码重置码生成。
 
-## Why This Tool
+## 环境要求
 
-Hikvision provides an official SADP Tool (SADPTool.exe) for device
-discovery and configuration, but it **only runs on Windows**. You can
-download it from the [Hikvision SADP Tool page][sadp-tool].
+- Go `1.26` 或更高版本。
+- 扫描设备时，电脑应与设备处于同一局域网或 VLAN。
+- SADP 使用 UDP 多播地址 `239.255.255.250:37020`。
+- ARP 扫描依赖本机 ARP 表，不能跨路由发现设备。
 
-[sadp-tool]: https://www.hikvision.com/en/support/tools/desktop-tools/sadp-for-windows/
+## 编译运行
 
-This project provides a **cross-platform alternative** that runs natively on:
-
-- **macOS** (Intel and Apple Silicon)
-- **Linux** (amd64 and arm64)
-- **Windows** (amd64)
-
-Once devices are discovered, `sadp isapi info` pulls structured device
-info via Hikvision's ISAPI over HTTP Digest auth.
-
-## Features
-
-- **SADP Discovery**: Discover Hikvision devices using the official SADP
-  multicast protocol
-- **ARP Discovery**: Find devices by scanning IP ranges and checking MAC
-  addresses
-- **Combined Scanning**: Use both methods for comprehensive network discovery
-- **Device Probing**: Check device status and information
-- **ISAPI Device Info**: Fetch `/ISAPI/System/deviceInfo` over HTTP with
-  built-in RFC 2617 Digest authentication (no `curl --digest` needed)
-- **SADP Commands**: Send SADP protocol commands to devices
-- **Password Reset Code Generation**: Generate reset codes for devices with
-  firmware < 5.3.0
-
-## Installation
-
-### From Source
+在项目目录执行：
 
 ```bash
-# Clone the repository
-git clone https://github.com/cameronnewman/hikvision-tooling.git
-cd hikvision-tooling
+# 查看帮助
+go run ./cmd/sadp --help
 
-# Build
-make build
-
-# Or install to your GOBIN
-make install
+# 编译当前平台
+go build -buildvcs=false -o bin/sadp ./cmd/sadp
+./bin/sadp --help
 ```
 
-### Pre-built Binaries
+Windows PowerShell 下编译：
 
-Download pre-built binaries from the [Releases][releases] page.
+```powershell
+go build -buildvcs=false -o bin\sadp.exe ./cmd\sadp
+.\bin\sadp.exe --help
+```
 
-[releases]: https://github.com/cameronnewman/hikvision-tooling/releases
-
-## Usage
+如果使用 Make：
 
 ```bash
-sadp <command> [options]
+make ENVIRONMENT=local build
 ```
 
-### Commands
+## 设备发现
 
-#### `discover:sadp` - SADP Protocol Discovery
+### SADP 自动发现
 
-Discover devices using SADP multicast (239.255.255.250:37020):
+不需要提前知道设备 IP，程序会在所有已启用的 IPv4 网卡上发送探测，并绑定固定 UDP `37020` 端口，以兼容旧款设备和官方 SADP 工具行为。
 
 ```bash
-# Basic discovery
-sadp discover:sadp
-
-# With XML output
-sadp discover:sadp --xml --output devices.xml
-
-# With CSV output
-sadp discover:sadp --csv
+./sadp discover:sadp --timeout 10s --debug
 ```
 
-#### `discover` - ARP-based Discovery
+### ARP 网段扫描
 
-Discover devices by scanning an IP range:
+ARP 扫描需要提供网段。例如本机地址是 `192.168.0.150`、掩码是 `255.255.255.0` 时，扫描 `192.168.0.0/24`：
 
 ```bash
-sadp discover 192.168.1.0/24
-sadp discover --workers 50 10.0.0.0/24
+./sadp discover --timeout 2s 192.168.0.0/24
 ```
 
-#### `scan` - Combined Discovery
+ARP 能发现设备的 IP 和 MAC，但无法直接提供序列号、设备类型或固件版本。
 
-Use both ARP and SADP for comprehensive scanning:
+### 联合扫描
+
+联合执行 ARP 与 SADP，并按 MAC 地址合并结果：
 
 ```bash
-sadp scan 192.168.1.0/24
+./sadp scan --timeout 2s 192.168.0.0/24
 ```
 
-#### `probe` - Device Information
-
-Check device status and information:
+输出 XML：
 
 ```bash
-sadp probe 192.168.1.64
+./sadp scan --xml 192.168.0.0/24
+./sadp scan --xml --output devices.xml 192.168.0.0/24
 ```
 
-#### `isapi info` - Device Information via ISAPI
+`--xml` 输出为纯 XML。只通过 ARP 找到的设备会包含 IP/MAC，SADP 找到的设备会包含完整设备字段。
 
-Fetch `/ISAPI/System/deviceInfo` from a Hikvision device using HTTP
-Digest authentication. Returns model, serial, firmware, MAC, and related
-metadata.
+注意：命令行选项应放在网段参数之前，例如使用 `scan --xml 192.168.0.0/24`。
+
+## ISAPI 查询
+
+标准 ISAPI 设备信息接口通常需要账号密码。推荐使用环境变量，避免密码进入 Shell 历史记录：
 
 ```bash
-sadp isapi info <HOST> [--username USER] [--password PASS] \
-                       [--insecure] [--timeout DURATION] [--json]
+export HIKVISION_USERNAME=admin
+export HIKVISION_PASSWORD='设备密码'
+./sadp isapi info 192.168.0.117
 ```
 
-The `<HOST>` may be `192.168.1.64`, `http://192.168.1.64`,
-`https://192.168.1.64:8443`, or a plain hostname. Scheme defaults to
-`http`; port defaults to the scheme default (80/443).
-
-Credentials come from `HIKVISION_USERNAME` / `HIKVISION_PASSWORD`
-(recommended) or the `--username` / `--password` flags. Flags leak into
-shell history — prefer the env vars.
-
-Use `--insecure` to skip TLS verification for self-signed HTTPS. Use
-`--json` for machine-readable output. Exit codes: `0` success, `2` auth
-failure, `3` network/timeout, `1` other.
-
-Example:
+JSON 输出：
 
 ```bash
-HIKVISION_USERNAME=admin HIKVISION_PASSWORD=xxxxx sadp isapi info 192.168.1.64
+./sadp isapi info 192.168.0.117 --json
 ```
 
-#### `send` - SADP Commands
-
-Send SADP protocol commands to devices:
+HTTPS 自签名证书：
 
 ```bash
-# List available commands
-sadp send --list
-
-# Send inquiry command
-sadp send 192.168.1.64 inquiry
-
-# Exchange code with a specific device
-sadp send 192.168.1.64 exchangecode --mac 4C:BD:8F:61:CC:5C
-
-# Target unknown IP (MAC required)
-sadp send 0.0.0.0 exchangecode --mac 4C:BD:8F:61:CC:5C
-
-# Force legacy direct-dial (rarely works, see below)
-sadp send 192.168.1.64 inquiry --unicast
+./sadp isapi info https://192.168.0.117 --insecure
 ```
 
-**Transport:** `send` writes the request to the SADP multicast group
-(`239.255.255.250:37020`) and to broadcast on every IPv4 interface, then
-correlates the reply back to the target MAC (preferred) or IP. This mirrors
-the official SADPTool and is required because Hikvision devices only listen
-for SADP on multicast/broadcast — unicast to `<device-ip>:37020` is typically
-rejected (`connection refused` on Linux) or silently dropped (`no response`
-on Windows). Pass `--unicast` only if you have a device that behaves
-differently and want to force the legacy path.
+没有账号密码时，能否读取完整设备信息取决于固件配置。ARP 只能返回 IP/MAC；SADP 或 ONVIF 发现可能返回部分信息，但不能绕过设备认证获取受保护的序列号。
 
-#### `reset` - Password Reset Code Generator
-
-Generate password reset codes for devices with firmware < 5.3.0:
+## 其他命令
 
 ```bash
-# Manual input
-sadp reset --serial 0123456789 --date 20231215
+# 探测常用 HTTP 端点
+./sadp probe 192.168.0.117
 
-# Auto-fetch from device
-sadp reset --ip 192.168.1.64
+# 查看 SADP 命令列表
+./sadp send --list
+
+# 生成旧版固件（低于 5.3.0）密码重置码
+./sadp reset --serial 0123456789 --date 20231215
 ```
 
-**Important Notes:**
+只对自己拥有或获授权管理的设备执行扫描和配置操作。
 
-- Serial number is case-sensitive
-- Remove the model prefix from the serial number
-  (e.g., DS-7616NI-I20123456789 → 0123456789)
-- Date must match the device's internal clock, not today's date
-- Only works on firmware versions < 5.3.0
+## 配置项
 
-## Configuration
+| 环境变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `DISCOVERY_WORKERS` | `100` | ARP 并发扫描数量 |
+| `DISCOVERY_TIMEOUT` | `1s` | 单个地址探测超时 |
+| `SADP_TIMEOUT` | `5s` | SADP 等待响应时间 |
+| `HTTP_TIMEOUT` | `10s` | HTTP 请求超时 |
+| `HIKVISION_USERNAME` | 空 | ISAPI 用户名 |
+| `HIKVISION_PASSWORD` | 空 | ISAPI 密码 |
+| `OUTPUT_DIR` | `data` | 输出目录 |
+| `DEBUG` | `false` | 是否输出调试日志 |
 
-Configure the tool using environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DISCOVERY_WORKERS` | 100 | Number of concurrent workers |
-| `DISCOVERY_TIMEOUT` | 1s | Per-host timeout for discovery |
-| `SADP_TIMEOUT` | 5s | SADP protocol timeout |
-| `HTTP_TIMEOUT` | 10s | HTTP request timeout |
-| `HIKVISION_USERNAME` | (empty) | ISAPI digest-auth username |
-| `HIKVISION_PASSWORD` | (empty) | ISAPI digest-auth password |
-| `USER_AGENT` | Chrome UA string | User-Agent header for HTTP probes |
-| `OUTPUT_DIR` | `data` | Directory used for generated output files |
-| `AES_KEY_HEX` | Hikvision default | AES key used by the reset-code generator |
-| `XOR_KEY_HEX` | Hikvision default | XOR key used by the reset-code generator |
-| `DEBUG` | false | Enable debug output |
-
-Example:
+示例：
 
 ```bash
-DISCOVERY_WORKERS=50 SADP_TIMEOUT=10s sadp scan 192.168.1.0/24
+DISCOVERY_WORKERS=50 SADP_TIMEOUT=10s ./sadp scan --debug 192.168.0.0/24
 ```
 
-## Development
+## Ubuntu 发布包
 
-### Prerequisites
+项目的 `dist` 目录提供：
 
-- Go 1.26 or later
-- golangci-lint (for linting)
+- `sadp-linux-amd64.tar.gz`：适用于 `x86_64`。
+- `sadp-linux-arm64.tar.gz`：适用于 `aarch64`。
 
-### Building
+Ubuntu 上确认架构并解压：
 
 ```bash
-# Build for current platform
-make build
-
-# Build for all platforms
-make release
-
-# Run tests
-make test
-
-# Run tests with coverage
-make test-cover
-
-# Run linters
-make lint
-
-# Run all checks
-make check
+uname -m
+tar -xzf sadp-linux-amd64.tar.gz
+cd sadp-linux-amd64
+chmod +x sadp
+./sadp --help
 ```
 
-### Project Structure
+## 开发检查
+
+```bash
+make ENVIRONMENT=local test
+make ENVIRONMENT=local vet
+make ENVIRONMENT=local check
+```
+
+项目结构：
 
 ```text
-.
-├── cmd/
-│   └── sadp/           # CLI entry point
-├── internal/
-│   ├── cli/            # CLI commands and logic
-│   ├── config/         # Environment-based configuration
-│   ├── crypto/         # Password reset code generation
-│   ├── isapi/          # ISAPI client (DeviceInfo over digest auth)
-│   ├── logger/         # Structured logging (zap)
-│   ├── network/        # HTTP client, digest transport, ARP, CIDR utils
-│   └── sadp/           # SADP protocol implementation
-├── Makefile
-└── README.md
+cmd/sadp             命令行入口
+internal/cli         命令解析与业务流程
+internal/sadp        SADP 协议实现
+internal/network     ARP、HTTP 与网络工具
+internal/isapi       ISAPI Digest 客户端
+internal/crypto      密码重置码生成
+internal/config      环境变量配置
 ```
 
-## Protocol Information
+## 许可证
 
-### SADP Protocol
-
-SADP (Search Active Devices Protocol) is Hikvision's device discovery protocol:
-
-- **Multicast Address**: 239.255.255.250
-- **Port**: 37020
-- **Transport**: UDP
-- **Format**: XML-based messages
-
-### Hikvision OUI (MAC Prefixes)
-
-The tool identifies Hikvision devices by their MAC address prefixes:
-
-- `28:57:BE`
-- `4C:BD:8F`
-- `54:C4:15`
-- `C0:56:E3`
-- `E0:50:8B`
-- And more...
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Disclaimer
-
-This tool is intended for legitimate network administration and security
-research purposes. Only use it on networks and devices you own or have
-explicit permission to test. The authors are not responsible for any
-misuse of this tool.
-
-## Contributing
-
-Issues and pull requests are welcome. Before opening a PR, please run
-`make check` (formatting, `go vet`, linters, tests) and keep changes
-focused — smaller PRs land faster.
+本项目使用 MIT 许可证，详见 [LICENSE](LICENSE)。

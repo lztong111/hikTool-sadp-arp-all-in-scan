@@ -346,7 +346,9 @@ func (s *Scanner) sendCommandBroadcast(xmlCmd string, opts SendOptions) (string,
 
 				s.log.Debugw("Sending on interface", "interface", ifaceName, "ip", localIP.String())
 
-				conn, err := s.listenUDP("udp4", &net.UDPAddr{IP: localIP, Port: 0})
+				// SADP 设备把命令响应发往固定的 37020 端口，使用临时端口会
+				// 导致部分固件（包括旧款设备）完全无法返回结果。
+				conn, err := s.listenUDP("udp4", &net.UDPAddr{IP: localIP, Port: Port})
 				if err != nil {
 					return
 				}

@@ -1,0 +1,51 @@
+海康设备发现工具 SADP
+
+一、确认 Ubuntu 架构
+
+    uname -m
+
+x86_64 使用 sadp-linux-amd64.tar.gz；aarch64 使用 sadp-linux-arm64.tar.gz。
+
+二、解压并查看帮助
+
+    tar -xzf sadp-linux-<架构>.tar.gz
+    cd sadp-linux-<架构>
+    chmod +x sadp
+    ./sadp --help
+
+三、扫描局域网
+
+SADP 多播发现不需要知道设备 IP：
+
+    ./sadp discover:sadp --timeout 10s --debug
+
+如果设备不响应 SADP，但和 Ubuntu 位于同一网段，使用 ARP 扫描：
+
+    ./sadp discover --timeout 2s 192.168.0.0/24
+
+同时执行两种方式：
+
+    ./sadp scan --timeout 2s 192.168.0.0/24
+
+输出合并后的 XML（适合脚本处理）：
+
+    ./sadp scan --xml 192.168.0.0/24
+    ./sadp scan --xml --output devices.xml 192.168.0.0/24
+
+四、ISAPI 查询
+
+    export HIKVISION_USERNAME=admin
+    export HIKVISION_PASSWORD='设备密码'
+    ./sadp isapi info 192.168.0.117
+
+如果设备使用 HTTPS 且证书为自签名：
+
+    ./sadp isapi info https://192.168.0.117 --insecure
+
+五、权限和网络要求
+
+- Ubuntu 主机需要和摄像头位于同一局域网或 VLAN。
+- SADP 使用 UDP 239.255.255.250:37020；防火墙需要允许相关 UDP 通信。
+- SADP 发现会绑定本地 UDP 37020 端口，以兼容旧款设备和官方 SADP 工具行为。
+- ARP 扫描依赖本机 ARP 表，跨路由网段无法通过 ARP 识别设备。
+- 只对自己拥有或获授权管理的设备执行扫描。
